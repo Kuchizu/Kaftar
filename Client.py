@@ -1,7 +1,7 @@
 import socket
 from threading import Thread
 
-SERVER = '192.168.1.10' # 62.109.4.22 192.168.1.10
+SERVER = '62.109.4.22' # 62.109.4.22 192.168.1.10
 PORT = 9090
 
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
