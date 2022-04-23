@@ -3,34 +3,25 @@ import PySimpleGUI as sg
 from threading import Thread
 from time import ctime, sleep
 from pickle import dumps, loads
-from random import randint
 
-SERVER = socket.gethostbyname(socket.gethostname())  # "62.109.4.22"
+SERVER = socket.gethostbyname(socket.gethostname()) # "62.109.4.22"
 PORT = 9090
 justif = lambda x: ' ' * x
 nowtime = lambda: ctime().split()[-2]
 Me = None
 sg.theme('DarkGrey10')
 font = ("Arial, 14")
-smaller_font = ("Arial, 11")
-smaller_font2 = ("Arial, 9")
-small = ("Arial, 7")
 sg.set_options(font=font)
 
-
 class User:
-    def __init__(self, user_id, user_name):
-        self.id = user_id
-        self.name = user_name
-
+    def __init__(self, id, name):
+        self.id = id
+        self.name = name
 
 # Fucking layouts
 layout1 = [
     [
-        sg.Text(
-            text='Welcome to Kaftar!',
-            relief=sg.RELIEF_RAISED
-        )
+        sg.Text('Welcome to Kaftar!')
     ],
     [
         sg.Text('Login:' + justif(8)),
@@ -74,12 +65,13 @@ layout2 = [
 
 layout3 = [
     [
-        sg.Column(
-            layout=[],
-            scrollable=True,
-            vertical_scroll_only=True,
-            size=(270, 147 * 3),
-            key='-Chatlist-'
+        sg.Listbox(
+            values=[],
+            key='-Chats-',
+            auto_size_text=True,
+            size=(10, 18),
+            no_scrollbar=True,
+            enable_events=True
         ),
         sg.MLine(
             size=(70, 20),
@@ -90,9 +82,8 @@ layout3 = [
     ],
     [
         sg.Text(
-            text=justif(60) + 'Input: ',
+            text=justif(40) + 'Input: ',
             justification='right'
-            # expand_x=True
         ),
         sg.InputText(
             do_not_clear=False,
@@ -108,29 +99,29 @@ layout = [
             layout=layout1,
             key='-Win_Login-',
             element_justification='center',
-            visible=True,
+            visible = True
         ),
         sg.Column(
             layout=layout2,
             key='-Win_Reg-',
             vertical_alignment='center',
             element_justification='l',
-            visible=False
+            visible = False
         ),
         sg.Column(
             layout=layout3,
             key='-Win_Main-',
-            visible=True
+            visible = True
         )
     ]
 ]
 
+
 cur_lay = '-Win_Login-'
-cur_chat = None
+window = sg.Window('Kaftar', layout)
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client.connect((SERVER, PORT))
 print(f'Successfuly connected to {SERVER}, port {PORT}.')
-
 
 def listen():
     sleep(0.5)
@@ -149,11 +140,11 @@ def listen():
                 else:
                     window.write_event_value('-LoginThread-', {'ok': True})
 
-            if cmd == 'Loadchatlist':
+            if cmd == 'Loadchats':
                 Me = User(*data[1])
-                window.write_event_value('-LoadchatsThread-', data[2])
+                window.write_event_value('-LoadchatsThread-', [*data[2], *data[3]])
 
-            if cmd == 'Loadchat':
+            if cmd == 'Loadpm':
                 window.write_event_value('-LoadThread-', data[1])
 
             if cmd == 'Message':
@@ -165,86 +156,46 @@ def listen():
             print('Listen: ', repr(e))
             break
 
-
 def gui(lisT):
-    global window, cur_lay, cur_chat
-    chatlist = {}
-    window = sg.Window('Kaftar', layout, finalize=True)
+    user_ids, user_names, group_ids, group_names = [], [], [], []
+    chats, titles = [], []
     while True:
+        global cur_lay
         event, values = window.read()
         print(event, values)
         if event in (None, 'Exit', 'Cancel'):
             client.sendall(dumps(['Killme']))
             break
 
-        if event in ('Send') and values['-Input-'] and cur_chat:
+        if event in ('Send') and values['-Input-'] and values['-Chats-']:
             message = values['-Input-']
             window['textbox'].print(f"[{nowtime()}][{Me.name}]: {message}")
-            client.sendall(dumps(['Send', cur_chat, [Me.id, Me.name], message]))
-
-            q = sg.Column(
-                layout=[[sg.Text('1')]],
-                scrollable=True,
-                vertical_scroll_only=True,
-                size=(270, 147 * 3),
-                key='-Chatlist-'
-            )
-            # window['-Chatlist-'] = 1
-            print(window['-Chatlist-'])
-            # print('YEYAEIDDN')
+            to_id = meta[chats.index(values['-Chats-'][0])]
+            client.sendall(dumps(['Send', to_id, [Me.id, Me.name], message]))
 
         if event in ('-LoadchatsThread-'):
-            chats = values['-LoadchatsThread-']
-            print(chats)
-            for chat_id, when, last_message, who in chats:
-                window.extend_layout(
-                    window['-Chatlist-'],
-                    [
-                        [
-                            sg.Frame(
-                                title=who,
-                                layout=
-                                [
-                                    [
-                                        sg.Text(
-                                            text=when.strftime('%H:%M:%S'),
-                                            font=smaller_font2
-                                        ),
-                                        sg.Text(
-                                            text=f'{last_message[:15]}...'
-                                            if len(last_message) > 15 else last_message
-                                        ),
-                                    ]
-                                ],
-                                pad=(0, 0),
-                                expand_x=True,
-                                # relief=sg.RELIEF_FLAT,
-                                key=f'Frame:{chat_id}'
-                            )
-                        ]
-                    ]
-                )
-                chatlist[chat_id] = who
-                window[f'Frame:{chat_id}'].bind('<Button-1>', '')
+            user_ids, user_names, group_ids, group_names = values['-LoadchatsThread-']
+            window['-Chats-'].update(values=user_names + group_names)
 
         if event in ('-LoadThread-'):
             pm_chat = values['-LoadThread-']
             for from_id, date, message in pm_chat:
                 date = date.strftime('%H:%M:%S')
-                who = Me.name if from_id == Me.id else chatlist[from_id]
+                who = Me.name if from_id == Me.id else values['-Chats-'][0]
                 window['textbox'].print(f'[{date}][{who}]: {message}')
 
-        if event in ('-PrintThread-'):
-            from_chat, from_name, message = values['-PrintThread-']
-            print(from_chat, cur_chat)
-            if from_chat == cur_chat:
+        if event in ('-PrintThread-') and values['-Chats-']:
+            now_chat = meta[chats.index(values['-Chats-'][0])]
+            from_id, from_name, message = values['-PrintThread-']
+            if from_id == now_chat:
                 window['textbox'].print(f'[{nowtime()}][{from_name}]: {message}')
 
-        if 'Frame' in event:
-            print(window['-Chatlist-'].update())
-            cur_chat = int(event.split(':')[-1])
+        if event in ('-Chats-') and values['-Chats-']:
+            continue
             window['textbox'].update('')
-            client.sendall(dumps(['Loadchat', cur_chat, Me.id]))
+            with_id = meta[chats.index(values['-Chats-'][0])] # Придумай что-нибудь с этой хуйнёй ну нельзя же так
+            client.sendall(dumps(['Loadpm', with_id, Me.id]))
+            pass
 
         if event in ('-Login_back-'):
             window[cur_lay].update(visible=False)
@@ -269,6 +220,7 @@ def gui(lisT):
                 window[cur_lay].update(visible=False)
                 cur_lay = '-Win_Main-'
                 window[cur_lay].update(visible=True)
+
 
         if event in ('-Registrate-'):
             number = values['-Number-']
@@ -298,7 +250,6 @@ def gui(lisT):
         #     print(cur_lay)
         #     window[f'-COL{cur_lay}-'].update(visible=True)
 
-
 lisT = Thread(target=listen)
 lisT.start()
-Thread(target=gui, args=(lisT,)).start()
+Thread(target=gui, args = (lisT, )).start()
